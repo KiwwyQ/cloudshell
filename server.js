@@ -124,22 +124,19 @@ app.post('/api/auth', (req, res) => {
 // Command execution endpoint
 app.post('/api/execute', (req, res) => {
   const { command } = req.body;
-  
-  // Whitelist safe commands for security
-  const allowedPatterns = [/^ls/, /^pwd/, /^node -v/, /^npm -v/, /^echo/, /^whoami/, /^date/, /^df/, /^env/];
-  const isAllowed = allowedPatterns.some(pattern => pattern.test(command));
 
-  if (!isAllowed) {
-    return res.json({ output: 'Command not whitelisted for security reasons.' });
+  if (!command) {
+    return res.status(400).json({ error: 'Command required' });
   }
 
-  try {
-    const output = execSync(command, { encoding: 'utf8', timeout: 5000 });
-    res.json({ output });
-  } catch (error) {
-    res.json({ output: `Error: ${error.message}` });
-  }
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      return res.status(500).json({ error: stderr || error.message });
+    }
+    res.json({ output: stdout });
+  });
 });
+
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
