@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: minimal-nodejs-app
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SHELL_PASSWORD
+        value: your_secure_password_here
