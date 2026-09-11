@@ -2,8 +2,11 @@ services:
   - type: web
     name: minimal-nodejs-app
     runtime: node
+    plan: free
+    region: oregon
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: SHELL_PASSWORD
-        value: your_secure_password_here
+        value: password123
+    autoDeploy: true
