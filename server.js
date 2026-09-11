@@ -1,14 +1,15 @@
 const express = require('express');
-const { execSync } = require('child_process');
+const { exec } = require('child_process');
 const app = express();
 
 const SHELL_PASSWORD = process.env.SHELL_PASSWORD || 'password123';
 const PORT = process.env.PORT || 3000;
 
+const sessions = new Set(); // Store active session tokens
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve a simple HTML interface
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -36,7 +37,7 @@ app.get('/', (req, res) => {
 
         <div id="shell" style="display:none;">
           <label>Command:</label>
-          <input type="text" id="command" placeholder="Enter command (e.g., ls, pwd, node -v)" autofocus>
+          <input type="text" id="command" placeholder="Enter command" autofocus>
           <button onclick="executeCommand()">Execute</button>
           <button onclick="logout()">Logout</button>
           <div id="output"></div>
@@ -44,7 +45,7 @@ app.get('/', (req, res) => {
       </div>
 
       <script>
-        let authenticated = false;
+        let token = null;
 
         function authenticate() {
           const pwd = document.getElementById('password').value;
@@ -56,7 +57,7 @@ app.get('/', (req, res) => {
           .then(r => r.json())
           .then(data => {
             if (data.success) {
-              authenticated = true;
+              token = data.token;
               document.getElementById('authForm').style.display = 'none';
               document.getElementById('shell').style.display = 'block';
               document.getElementById('output').textContent = 'Authenticated! Type a command above.';
@@ -68,7 +69,7 @@ app.get('/', (req, res) => {
         }
 
         function executeCommand() {
-          if (!authenticated) return;
+          if (!token) return;
           const cmd = document.getElementById('command').value;
           if (!cmd) return;
 
@@ -78,7 +79,7 @@ app.get('/', (req, res) => {
           fetch('/api/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: cmd })
+            body: JSON.stringify({ command: cmd, token: token })
           })
           .then(r => r.json())
           .then(data => {
@@ -91,7 +92,7 @@ app.get('/', (req, res) => {
         }
 
         function logout() {
-          authenticated = false;
+          token = null;
           document.getElementById('authForm').style.display = 'block';
           document.getElementById('shell').style.display = 'none';
           document.getElementById('password').value = '';
@@ -115,28 +116,33 @@ app.get('/', (req, res) => {
 app.post('/api/auth', (req, res) => {
   const { password } = req.body;
   if (password === SHELL_PASSWORD) {
-    res.json({ success: true });
+    const token = require('crypto').randomBytes(16).toString('hex');
+    sessions.add(token);
+    res.json({ success: true, token });
   } else {
     res.json({ success: false });
   }
 });
 
-// Command execution endpoint
+// Command execution endpoint - REQUIRES VALID TOKEN
 app.post('/api/execute', (req, res) => {
-  const { command } = req.body;
+  const { command, token } = req.body;
+
+  if (!token || !sessions.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   if (!command) {
     return res.status(400).json({ error: 'Command required' });
   }
 
-  exec(command, (error, stdout, stderr) => {
+  exec(command, { timeout: 5000 }, (error, stdout, stderr) => {
     if (error) {
-      return res.status(500).json({ error: stderr || error.message });
+      return res.json({ output: stderr || error.message });
     }
     res.json({ output: stdout });
   });
 });
-
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
